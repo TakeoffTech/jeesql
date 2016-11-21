@@ -76,27 +76,27 @@
   (first (jdbc/execute! db sql-and-params)))
 
 (defn insert-handler
-  [db [statement & params]]
-  (jdbc/db-do-prepared-return-keys db statement params))
+  [db statement-and-params]
+  (jdbc/db-do-prepared-return-keys db statement-and-params))
 
 (defn insert-handler-return-keys
   [return-keys db [statement & params]]
   (with-open [ps (jdbc/prepare-statement (jdbc/get-connection db) statement
-                                         :return-keys return-keys)]
-    (jdbc/db-do-prepared-return-keys db ps params)))
+                                         {:return-keys return-keys})]
+    (jdbc/db-do-prepared-return-keys db (cons ps params))))
 
 (defn query-handler
   [row-fn db sql-and-params]
   (jdbc/query db sql-and-params
-              :identifiers lower-case
-              :row-fn row-fn
-              :result-set-fn doall))
+              {:identifiers lower-case
+               :row-fn row-fn
+               :result-set-fn doall}))
 
 (defn query-handler-single-value
   [db sql-and-params]
   (jdbc/query db sql-and-params
-              :row-fn (comp val first seq)
-              :result-set-fn first))
+              {:row-fn (comp val first seq)
+               :result-set-fn first}))
 
 (defn query-handler-stream
   [fetch-size row-fn db result-channel sql-and-params]

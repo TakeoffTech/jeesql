@@ -8,7 +8,7 @@
 (def ^{:doc "Regular expression to split statement into three parts: before the first parameter,
 the parameter name and the rest of the statement. A parameter always starts with a single colon and
 may contain alphanumerics as well as '-', '_' and '?' characters."}
-  parameter #"(?s)(.*?[^:\\]):(\p{Alpha}[\p{Alnum}\_\-\?]*)(.*)")
+  parameter #"(?s)(.*?[^:\\]):(\p{Alpha}[\p{Alnum}\_\-\?\./]*)(.*)")
 
 (defn- replace-escaped-colon [string]
   (str/replace string #"\\:" ":"))

@@ -83,6 +83,10 @@
 
 (expect var? #'combined/edge)
 
+(expect first (combined/edge jeesql.core-test/derby-db))
+
 (require-sql ["jeesql/sample_files/combined_file.sql" :refer [the-time]])
 
 (expect var? #'the-time)
+
+(expect first (the-time jeesql.core-test/derby-db))
