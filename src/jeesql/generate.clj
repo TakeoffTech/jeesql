@@ -103,8 +103,7 @@
 (defn query-handler-stream
   [fetch-size row-fn db result-channel sql-and-params]
   (jdbc/db-query-with-resultset
-   db (into [{:fetch-size fetch-size}]
-            sql-and-params)
+   db sql-and-params
    (fn [rs]
      (loop [[row & rows] (jdbc/result-set-seq rs)]
        (if-not row
@@ -113,7 +112,8 @@
          ;; have more rows to send
          (when (async/>!! result-channel (row-fn row))
            ;; channel is not closed yet
-           (recur rows)))))))
+           (recur rows)))))
+   {:fetch-size fetch-size}))
 
 (def ^:private supported-attributes #{:single? :return-keys :default-parameters
                                       :fetch-size :row-fn})
