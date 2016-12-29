@@ -18,6 +18,7 @@ I will only document the notable differences here.
 * defquery support is removed (only defqueries supported)
 * automatic reload of defqueries files
 * No instaparse dependency (see parsing below)
+* Support a slow query reporter
 
 ## Positional arguments
 
@@ -170,3 +171,14 @@ Note that as the name may contain the '-' character, care must be taken not to m
 for arithmetic in SQL, so: *:age-1* is interpreted as the parameter "age-1" not age minus 1.
 
 Colon characters can be escaped by prefixing it with a single backslash.
+
+## Slow query reporting
+
+If a :report-slow-queries key is provided in the options map to defqueries,
+queries that take longer to execute than the defined threshold (:slow-query-threshold-ms key,
+defaults to 2000ms) are reported using that function.
+
+The function takes 4 arguments: the operation type (keyword :query, :insert or :update), the duration
+(in milliseconds) of the operation, the connection and the query (string and params).
+
+There is an example of running an automatic EXPLAIN ANALYZE for PostgreSQL in jeesql/postgres.clj.
