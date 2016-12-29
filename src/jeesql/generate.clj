@@ -134,13 +134,18 @@
   - otherwise `clojure.java.jdbc/query` will be used."
   [ns {:keys [name docstring statement attributes]
        :as query}
-   query-options]
+   {:keys [report-slow-queries slow-query-threshold-ms]
+    :as query-options}]
   (assert name      "Query name is mandatory.")
   (assert statement "Query statement is mandatory.")
   (check-attributes attributes)
-  (let [attributes (binding [*ns* ns] (eval attributes))
+  (let [slow-query-threshold-ms (or slow-query-threshold-ms 2000)
+        attributes (binding [*ns* ns] (eval attributes))
         stream? (:fetch-size attributes)
         row-fn (or (:row-fn attributes) identity)
+        operation-type (cond (= (take-last 2 name) [\< \!]) :insert
+                             (= (last name) \!) :update
+                             :default :query)
         jdbc-fn (cond
                   (= (take-last 2 name) [\< \!]) (if-let [rk (:return-keys attributes)]
                                                    (partial insert-handler-return-keys rk)
@@ -157,8 +162,13 @@
                   (assert connection
                           (format "First argument must be a database connection to function '%s'."
                                   name))
-                  (jdbc-fn connection
-                           (rewrite-query-for-jdbc tokens args)))
+                  (let [start (System/nanoTime)
+                        jdbc-query (rewrite-query-for-jdbc tokens args)
+                        result (jdbc-fn connection jdbc-query)
+                        time (/ (double (- (System/nanoTime) start)) 1000000.0)]
+                    (when (and report-slow-queries (> time slow-query-threshold-ms))
+                      (report-slow-queries operation-type time connection jdbc-query))
+                    result))
         [display-args generated-function]
         (let [default-parameters (or (:default-parameters attributes) {})
               named-args (when-not (empty? required-arg-symbols)
