@@ -8,6 +8,8 @@
 (defn- replace-escaped-colon [string]
   (str/replace string #"\\:" ":"))
 
+(def ^:const parameter-chars #{\- \? \_})
+
 (defn- parse-statement
   [statement ns]
   (let [make-param (if ns
@@ -16,40 +18,39 @@
                      #(keyword (subs % 1)))]
     (as-> (reduce
            (fn [{:keys [tokens token parameter in-quoted? last-ch] :as state} ch]
-             (assoc
-              (case ch
-                \"
-                (assoc state
-                       :in-quoted? (not in-quoted?)
-                       :token (str token ch))
+             (let [[state done?] (if parameter
+                                   (if (or (Character/isJavaLetterOrDigit ch)
+                                           (parameter-chars ch)
+                                           (and (= ch \:) (= parameter ":")))
+                                     [(assoc state :parameter (str parameter ch)) true]
+                                     [(assoc state
+                                             :tokens (conj tokens (make-param parameter))
+                                             :parameter nil) false])
+                                   [state false])]
+               (if done?
+                 state
+                 (assoc
+                  (case ch
+                    \"
+                    (assoc state
+                           :in-quoted? (not in-quoted?)
+                           :token (str token ch))
 
-                (\space)
-                (if parameter
-                  (assoc state
-                         :tokens (conj tokens (make-param parameter))
-                         :token nil
-                         :parameter nil)
-                  (assoc state :token (str token ch)))
+                    \:
+                    (if (and (not in-quoted?)
+                             (not= last-ch \\)
+                             (nil? parameter))
+                      (assoc state
+                             :tokens (if-not (empty? token)
+                                       (conj tokens token)
+                                       tokens)
+                             :parameter (str ch)
+                             :token nil)
+                      (assoc state :token (str token ch)))
 
-                \:
-                (if (and (not in-quoted?)
-                         (not= last-ch \\)
-                         (nil? parameter))
-                  (assoc state
-                         :tokens (if-not (empty? token)
-                                   (conj tokens token)
-                                   tokens)
-                         :parameter (str ch)
-                         :token nil)
-                  (if parameter
-                    (assoc state :parameter (str parameter ch))
-                    (assoc state :token (str token ch))))
-
-                ;; default, append to parameter or token
-                (if parameter
-                  (assoc state :parameter (str parameter ch))
-                  (assoc state :token (str token ch))))
-              :last-ch ch))
+                    ;; default, append to parameter or token
+                    (assoc state :token (str token ch)))
+                  :last-ch ch))))
            {:tokens [] :token nil :parameter nil :last-ch nil :in-quoted? false}
            statement) parsed
       (if-not (empty? (:token parsed))
