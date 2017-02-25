@@ -30,3 +30,16 @@ SELECT -- company fields as namespaced keys
   FROM company
  WHERE -- query parameter as a namespaced key
        visiting_country = ::address/country
+
+-- name: insert-company!
+INSERT
+  INTO company
+       (name,
+        visiting_street_address, visiting_postal_code, visiting_country,
+        billing_street_address, billing_postal_code, billing_country)
+VALUES (::company/name,
+        [::company/visiting-address ::address/street],
+	[::company/visiting-address ::address/postal-code],
+	[::company/visiting-address ::address/
+	--FIXME: give up... this doesn't feel like SQL anymore,
+	-- and can't be copy/pasted to/from SQL clients
