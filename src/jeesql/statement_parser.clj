@@ -5,39 +5,73 @@
             [clojure.string :as str])
   (:import [jeesql.types Query]))
 
-(def ^{:doc "Regular expression to split statement into three parts: before the first parameter,
-the parameter name and the rest of the statement. A parameter always starts with a single colon and
-may contain alphanumerics as well as '-', '_' and '?' characters."}
-  parameter #"(?s)(.*?[^:\\]):(\p{Alpha}[\p{Alnum}\_\-\?\./]*)(.*)")
-
 (defn- replace-escaped-colon [string]
   (str/replace string #"\\:" ":"))
 
 (defn- parse-statement
-  [statement context]
-  (loop [acc []
-         rest-of-statement statement]
-    (let [[_ before parameter after :as match] (re-find parameter rest-of-statement)]
-      (if-not match
-        (if rest-of-statement
-          (conj acc (replace-escaped-colon rest-of-statement))
-          acc)
-        (recur (into acc
-                     [(replace-escaped-colon before) (symbol parameter)])
-               after)))))
+  [statement ns]
+  (let [make-param (if ns
+                     #(binding [*ns* ns]
+                        (eval (read-string %)))
+                     #(keyword (subs % 1)))]
+    (as-> (reduce
+           (fn [{:keys [tokens token parameter in-quoted? last-ch] :as state} ch]
+             (assoc
+              (case ch
+                \"
+                (assoc state
+                       :in-quoted? (not in-quoted?)
+                       :token (str token ch))
+
+                (\space)
+                (if parameter
+                  (assoc state
+                         :tokens (conj tokens (make-param parameter))
+                         :token nil
+                         :parameter nil)
+                  (assoc state :token (str token ch)))
+
+                \:
+                (if (and (not in-quoted?)
+                         (not= last-ch \\)
+                         (nil? parameter))
+                  (assoc state
+                         :tokens (if-not (empty? token)
+                                   (conj tokens token)
+                                   tokens)
+                         :parameter (str ch)
+                         :token nil)
+                  (if parameter
+                    (assoc state :parameter (str parameter ch))
+                    (assoc state :token (str token ch))))
+
+                ;; default, append to parameter or token
+                (if parameter
+                  (assoc state :parameter (str parameter ch))
+                  (assoc state :token (str token ch))))
+              :last-ch ch))
+           {:tokens [] :token nil :parameter nil :last-ch nil :in-quoted? false}
+           statement) parsed
+      (if-not (empty? (:token parsed))
+        (assoc parsed :tokens (conj (:tokens parsed) (:token parsed)))
+        parsed)
+      (if-not (empty? (:parameter parsed))
+        (assoc parsed :tokens (conj (:tokens parsed) (make-param (:parameter parsed))))
+        parsed)
+      (:tokens parsed))))
 
 (defmulti tokenize
   "Turn a raw SQL statement into a vector of SQL-substrings
-  interspersed with clojure symbols for the query's parameters.
+  interspersed with clojure symbols or namespaced keywords for the query's parameters.
 
   For example, `(parse-statement \"SELECT * FROM person WHERE :age > age\")`
   becomes: `[\"SELECT * FROM person WHERE \" age \" > age\"]`"
-  (fn [this] (type this)))
+  (fn [this ns] (type this)))
 
 (defmethod tokenize String
-  [this]
-  (parse-statement this nil))
+  [this ns]
+  (parse-statement this ns))
 
 (defmethod tokenize Query
-  [{:keys [statement]}]
-  (parse-statement statement nil))
+  [{:keys [statement]} ns]
+  (parse-statement statement ns))

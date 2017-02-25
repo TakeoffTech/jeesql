@@ -5,7 +5,8 @@
             [jeesql.util :refer [create-root-var]]
             [jeesql.types :refer [map->Query]]
             [jeesql.statement-parser :refer [tokenize]]
-            [clojure.core.async :as async])
+            [clojure.core.async :as async]
+            [clojure.spec :as s])
   (:import [jeesql.types Query]))
 
 (def in-list-parameter?
@@ -30,44 +31,29 @@
   (distinct (filter symbol? tokens)))
 
 (defn expected-parameter-list
-  [query]
-  (let [tokens (tokenize query)
-        {:keys [expected-keys expected-positional-count]} (analyse-statement-tokens tokens)]
-    expected-keys))
+  [query ns]
+  (as-> query q
+    (tokenize q ns)
+    (remove string? q)
+    (distinct q)))
 
 (defn rewrite-query-for-jdbc
   [tokens initial-args]
-  (let [{:keys [expected-keys expected-positional-count]} (analyse-statement-tokens tokens)
-        actual-keys (set (keys (dissoc initial-args :?)))
-        actual-positional-count (count (:? initial-args))
-        missing-keys (set/difference expected-keys actual-keys)]
-    (assert (empty? missing-keys)
-            (format "Query argument mismatch.\nExpected keys: %s\nActual keys: %s\nMissing keys: %s"
-                    (str (seq expected-keys))
-                    (str (seq actual-keys))
-                    (str (seq missing-keys))))
-    (assert (= expected-positional-count actual-positional-count)
-            (format (join "\n"
-                          ["Query argument mismatch."
-                           "Positional ? parameters are not supported! Got %d."])
-                    actual-positional-count))
-    (let [[final-query final-parameters consumed-args]
-          (reduce (fn [[query parameters args] token]
-                    (cond
-                      (string? token) [(str query token)
-                                       parameters
-                                       args]
-                      (symbol? token) (let [[arg new-args] (if (= '? token)
-                                                             [(first (:? args)) (update-in args [:?] rest)]
-                                                             [(get args (keyword token)) args])]
-                                        [(str query (args-to-placeholders arg))
-                                         (vec (if (in-list-parameter? arg)
-                                                (concat parameters arg)
-                                                (conj parameters arg)))
-                                         new-args])))
-                  ["" [] initial-args]
-                  tokens)]
-      (concat [final-query] final-parameters))))
+  (let [[final-query final-parameters consumed-args]
+        (reduce (fn [[query parameters args] token]
+                  (if (string? token)
+                    [(str query token)
+                     parameters
+                     args]
+                    (let [[arg new-args] [(get args token) args]]
+                      [(str query (args-to-placeholders arg))
+                       (vec (if (in-list-parameter? arg)
+                              (concat parameters arg)
+                              (conj parameters arg)))
+                       new-args])))
+                ["" [] initial-args]
+                tokens)]
+    (concat [final-query] final-parameters)))
 
 ;; Maintainer's note: clojure.java.jdbc.execute! returns a list of
 ;; rowcounts, because it takes a list of parameter groups. In our
@@ -126,6 +112,12 @@
                    ". Valid attributes are: "
                    (join ", " supported-attributes))))))
 
+(defn- generate-spec [ns args]
+  (let [{req-un true
+         req false} (group-by (comp nil? namespace) args)]
+    (eval `(s/keys :req-un [~@(map #(keyword (name (ns-name ns)) (name %)) req-un)]
+                   :req [~@req]))))
+
 (defn generate-query-fn
   "Generate a function to run a query.
 
@@ -154,14 +146,18 @@
                   (:single? attributes) query-handler-single-value
                   stream? (partial query-handler-stream (:fetch-size attributes) row-fn)
                   :else (partial query-handler row-fn))
-        required-args (expected-parameter-list statement)
+        required-args (expected-parameter-list statement ns)
         required-arg-symbols (map (comp symbol clojure.core/name)
                                   required-args)
-        tokens (tokenize statement)
+        tokens (tokenize statement ns)
+        spec (generate-spec ns required-args)
         real-fn (fn [connection args]
                   (assert connection
                           (format "First argument must be a database connection to function '%s'."
                                   name))
+                  (assert (s/valid? spec args)
+                          (format "Query argument mismatch.\n%s"
+                                  (s/explain-str spec args)))
                   (let [start (System/nanoTime)
                         jdbc-query (rewrite-query-for-jdbc tokens args)
                         result (jdbc-fn connection jdbc-query)

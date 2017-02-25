@@ -32,7 +32,7 @@
 ;;; Testing reassemble-query
 (do-template [statement parameters _ rewritten-form]
   (expect rewritten-form
-          (rewrite-query-for-jdbc (tokenize statement)
+          (rewrite-query-for-jdbc (tokenize statement nil)
                                   parameters))
 
   "SELECT age FROM users WHERE country = :country"
@@ -86,9 +86,9 @@
 
 ;;; Incorrect parameters.
 (expect AssertionError
-        (rewrite-query-for-jdbc (tokenize "SELECT age FROM users WHERE country = :country AND name = :name")
+        (rewrite-query-for-jdbc (tokenize "SELECT age FROM users WHERE country = :country AND name = :name" nil)
                                 {:country "gb"}))
 
 (expect AssertionError
-        (rewrite-query-for-jdbc (tokenize "SELECT age FROM users WHERE country = :c AND name = :n")
+        (rewrite-query-for-jdbc (tokenize "SELECT age FROM users WHERE country = :c AND name = :n" nil)
                                 {}))
