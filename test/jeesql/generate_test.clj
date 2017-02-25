@@ -6,7 +6,7 @@
 
 (do-template [statement _ expected-parameters]
   (expect expected-parameters
-          (expected-parameter-list statement))
+          (expected-parameter-list statement *ns*))
 
   "SELECT * FROM user"
   => #{}
@@ -83,12 +83,3 @@
   {:group_ids [1 2]
    :parent_id 3}
   => ["SELECT * FROM users WHERE group_ids IN(?,?) AND parent_id = ?" 1 2 3])
-
-;;; Incorrect parameters.
-(expect AssertionError
-        (rewrite-query-for-jdbc (tokenize "SELECT age FROM users WHERE country = :country AND name = :name" nil)
-                                {:country "gb"}))
-
-(expect AssertionError
-        (rewrite-query-for-jdbc (tokenize "SELECT age FROM users WHERE country = :c AND name = :n" nil)
-                                {}))

@@ -2,13 +2,18 @@
   (:require [clojure.java.io :as io]
             [clojure.string :refer [join]]
             [jeesql.util :refer [str-non-nil]]
-            [clojure.string :as str])
-  (:import [jeesql.types Query]))
+            [clojure.string :as str]
+            [jeesql.types])
+  (:import (jeesql.types Query)))
 
 (defn- replace-escaped-colon [string]
   (str/replace string #"\\:" ":"))
 
 (def ^:const parameter-chars #{\- \? \_})
+
+(def ^{:const true
+       :doc "Characters that are allowed to precede a keyword :param"}
+  delimiter-chars #{\, \n \space \tab \= \* \+ \- \% \[ \] \( \)})
 
 (defn- parse-statement
   [statement ns]
@@ -38,7 +43,7 @@
 
                     \:
                     (if (and (not in-quoted?)
-                             (not= last-ch \\)
+                             (delimiter-chars last-ch)
                              (nil? parameter))
                       (assoc state
                              :tokens (if-not (empty? token)
@@ -48,7 +53,7 @@
                              :token nil)
                       (assoc state :token (str token ch)))
 
-                    ;; default, append to parameter or token
+                    ;; default, append to token
                     (assoc state :token (str token ch)))
                   :last-ch ch))))
            {:tokens [] :token nil :parameter nil :last-ch nil :in-quoted? false}

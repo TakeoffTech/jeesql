@@ -109,3 +109,11 @@
 
 (expect SQLSyntaxErrorException
         (syntax-error derby-db))
+
+;;; Incorrect parameters.
+(expect AssertionError
+        ;; :age missing
+        (find-by-name-and-age-is-not derby-db {:name "foo"}))
+
+(expect AssertionError
+        (find-people-with-ages derby-db {}))

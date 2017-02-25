@@ -28,14 +28,14 @@
    :expected-positional-count 0})
 
 (defn- positional-parameter-list [tokens]
-  (distinct (filter symbol? tokens)))
+  (distinct (remove string? tokens)))
 
 (defn expected-parameter-list
   [query ns]
   (as-> query q
     (tokenize q ns)
     (remove string? q)
-    (distinct q)))
+    (into #{} q)))
 
 (defn rewrite-query-for-jdbc
   [tokens initial-args]
@@ -185,10 +185,9 @@
 
             (and (:positional? query-options)
                  (< (count required-args) 20))
-            (let [params (positional-parameter-list tokens)
-                  keywords (map (comp keyword clojure.core/name) params)]
+            (let [keywords (positional-parameter-list tokens)]
               [(list ['connection named-args]
-                     (vec (concat ['connection] params)))
+                     (vec (concat ['connection] (map (comp symbol clojure.core/name) keywords))))
                (fn query-wrapper-fn-positional
                  [connection & args]
                  (if (and (= 1 (count args))
