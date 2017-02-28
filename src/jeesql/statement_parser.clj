@@ -13,7 +13,7 @@
 
 (def ^{:const true
        :doc "Characters that are allowed to precede a keyword :param"}
-  delimiter-chars #{\, \n \space \tab \= \* \+ \- \% \[ \] \( \)})
+  delimiter-chars #{\, \n \space \tab \= \* \+ \- \% \[ \(})
 
 (defn- parse-statement
   [statement ns]
@@ -23,10 +23,14 @@
                      #(keyword (subs % 1)))]
     (as-> (reduce
            (fn [{:keys [tokens token parameter in-quoted? last-ch] :as state} ch]
+             ;(println "STATE: " (pr-str state) ", CH: " (str ch))
              (let [[state done?] (if parameter
                                    (if (or (Character/isJavaLetterOrDigit ch)
                                            (parameter-chars ch)
-                                           (and (= ch \:) (= parameter ":")))
+                                           (and (= ch \:) (= parameter ":"))
+                                           (and (= ch \/)
+                                                (> (count parameter) 1)
+                                                (not (str/includes? parameter "/"))))
                                      [(assoc state :parameter (str parameter ch)) true]
                                      [(assoc state
                                              :tokens (conj tokens (make-param parameter))

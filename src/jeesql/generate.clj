@@ -53,6 +53,8 @@
                        new-args])))
                 ["" [] initial-args]
                 tokens)]
+    (println "FINAL QUERY: " (pr-str final-query))
+    (println "FINAL PARAMETERS: " (pr-str final-parameters))
     (concat [final-query] final-parameters)))
 
 ;; Maintainer's note: clojure.java.jdbc.execute! returns a list of
@@ -118,6 +120,25 @@
     (eval `(s/keys :req-un [~@(map #(keyword (name (ns-name ns)) (name %)) req-un)]
                    :req [~@req]))))
 
+;; Matches column names like: AS "::foo/bar"
+(def ^:const column-name-regex #"[Aa][Ss]\s+\"([^\"]+?)\"")
+
+(defn- generate-return-structure [ns query]
+  (let [names (map second (re-seq column-name-regex query))
+        mapping (zipmap (map keyword names)
+                        (map #(let [mapped (binding [*ns* ns]
+                                             (eval (read-string %)))]
+                                (if (keyword? mapped)
+                                  [mapped]
+                                  mapped)) names))]
+    (fn [row]
+      (reduce (fn [row [raw-keyword mapped-keyword]]
+                (-> row
+                    (dissoc raw-keyword)
+                    (assoc-in mapped-keyword (get row raw-keyword))))
+              row
+              mapping))))
+
 (defn generate-query-fn
   "Generate a function to run a query.
 
@@ -126,7 +147,7 @@
   - otherwise `clojure.java.jdbc/query` will be used."
   [ns {:keys [name docstring statement attributes]
        :as query}
-   {:keys [report-slow-queries slow-query-threshold-ms]
+   {:keys [report-slow-queries slow-query-threshold-ms structure]
     :as query-options}]
   (assert name      "Query name is mandatory.")
   (assert statement "Query statement is mandatory.")
@@ -134,7 +155,17 @@
   (let [slow-query-threshold-ms (or slow-query-threshold-ms 2000)
         attributes (binding [*ns* ns] (eval attributes))
         stream? (:fetch-size attributes)
+
+        required-args (expected-parameter-list statement ns)
+        required-arg-symbols (map (comp symbol clojure.core/name)
+                                  required-args)
+        tokens (tokenize statement ns)
+        spec (generate-spec ns required-args)
+
         row-fn (or (:row-fn attributes) identity)
+        row-fn (if structure
+                 (comp row-fn (generate-return-structure ns
+                               (reduce str (filter string? tokens)))))
         operation-type (cond (= (take-last 2 name) [\< \!]) :insert
                              (= (last name) \!) :update
                              :default :query)
@@ -146,11 +177,7 @@
                   (:single? attributes) query-handler-single-value
                   stream? (partial query-handler-stream (:fetch-size attributes) row-fn)
                   :else (partial query-handler row-fn))
-        required-args (expected-parameter-list statement ns)
-        required-arg-symbols (map (comp symbol clojure.core/name)
-                                  required-args)
-        tokens (tokenize statement ns)
-        spec (generate-spec ns required-args)
+
         real-fn (fn [connection args]
                   (assert connection
                           (format "First argument must be a database connection to function '%s'."
