@@ -77,7 +77,9 @@ called, instead of a sequence of maps.
 ### return-keys
 
 Return keys (for insert) is a vector of strings for keys to return.
-This is mainly for Oracle users.
+This is mainly for Oracle users. Remember to use the postfix <! in the function name 
+as yesql uses this naming convention to identify it needs to return values
+from the insert.
 
 ```SQL
 -- name: insert-foo<!
