@@ -74,34 +74,34 @@
 ;; case, we only ever use one group, so we'll unpack the
 ;; single-element list with `first`.
 (defn execute-handler
-  [db sql-and-params]
-  (first (jdbc/execute! db sql-and-params)))
+  [db sql-and-params transactional?]
+  (first (jdbc/execute! db sql-and-params {:transaction? transactional?})))
 
 (defn insert-handler
-  [db statement-and-params]
-  (jdbc/db-do-prepared-return-keys db statement-and-params))
+  [db statement-and-params transactional?]
+  (jdbc/db-do-prepared-return-keys db transactional? statement-and-params))
 
 (defn insert-handler-return-keys
-  [return-keys db [statement & params]]
+  [return-keys db [statement & params] transactional?]
   (with-open [ps (jdbc/prepare-statement (jdbc/get-connection db) statement
                                          {:return-keys return-keys})]
-    (jdbc/db-do-prepared-return-keys db (cons ps params))))
+    (jdbc/db-do-prepared-return-keys db transactional? (cons ps params))))
 
 (defn query-handler
-  [row-fn db sql-and-params]
+  [row-fn db sql-and-params _]
   (jdbc/query db sql-and-params
               {:identifiers lower-case
                :row-fn row-fn
                :result-set-fn doall}))
 
 (defn query-handler-single-value
-  [db sql-and-params]
+  [db sql-and-params _]
   (jdbc/query db sql-and-params
               {:row-fn (comp val first seq)
                :result-set-fn first}))
 
 (defn query-handler-stream
-  [fetch-size row-fn db result-channel sql-and-params]
+  [fetch-size row-fn db result-channel sql-and-params _]
   (jdbc/db-query-with-resultset
    db sql-and-params
    (fn [rs]
@@ -134,7 +134,7 @@
   - otherwise `clojure.java.jdbc/query` will be used."
   [ns {:keys [name docstring statement attributes]
        :as query}
-   {:keys [report-slow-queries slow-query-threshold-ms]
+   {:keys [report-slow-queries slow-query-threshold-ms transactional?]
     :as query-options}]
   (assert name      "Query name is mandatory.")
   (assert statement "Query statement is mandatory.")
@@ -164,7 +164,7 @@
                                   name))
                   (let [start (System/nanoTime)
                         jdbc-query (rewrite-query-for-jdbc tokens args)
-                        result (jdbc-fn connection jdbc-query)
+                        result (jdbc-fn connection jdbc-query (if (nil? transactional?) true transactional?))
                         time (/ (double (- (System/nanoTime) start)) 1000000.0)]
                     (when (and report-slow-queries (> time slow-query-threshold-ms))
                       (report-slow-queries operation-type time connection jdbc-query))
@@ -185,7 +185,8 @@
                [connection result-channel args]
                (jdbc-fn connection result-channel
                         (rewrite-query-for-jdbc tokens
-                                                (merge default-parameters args))))]
+                                                (merge default-parameters args))
+                        (if (nil? transactional?) true transactional?)))]
 
             (and (:positional? query-options)
                  (< (count required-args) 20))

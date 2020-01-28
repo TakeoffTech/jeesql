@@ -1,4 +1,4 @@
-(defproject webjure/jeesql "0.4.7"
+(defproject webjure/jeesql "0.4.7.takeoff-patch"
   :description "A Clojure library for using SQL"
   :url "https://github.com/tatut/jeesql"
   :license {:name "Eclipse Public License"
@@ -20,4 +20,13 @@
   :aliases {"test-all" ["with-profile" "+1.5:+1.6:+1.7:+1.8" "do"
                         ["clean"]
                         ["expectations"]]
-            "test-ancient" ["expectations"]})
+            "test-ancient" ["expectations"]}
+  :deploy-repositories [["releases"
+                         {:url           "https://maven.tom.takeoff.com/artifactory/libs-release-local/"
+                          :sign-releases false
+                          :username      "tom-dev"
+                          :password      "adRi32rrYMTaxeaYQIvh"}]
+                        ["snapshots"
+                         {:url      "https://maven.tom.takeoff.com/artifactory/libs-snapshot-local/"
+                          :username "tom-dev"
+                          :password "adRi32rrYMTaxeaYQIvh"}]])
